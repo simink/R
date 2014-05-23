@@ -1,0 +1,89 @@
+A) Prediction of automobile sales
+========================================================
+library(knitr)
+library(markdown)
+
+```{r}
+library(psych)
+library(GPArotation)
+car = read.csv("car.csv", stringsAsFactors = F)
+head(car)
+str(car)
+summary(car)
+sum(complete.cases(car))
+
+car = car[complete.cases(car),] #keep only complete cases
+carpc = car[,c(5:13)] # select variables for PCA
+```
+
+Assessing factorability
+```{r}
+library(Hmisc)
+rcorr(as.matrix(carpc))  #check for correlations
+pairs(carpc)  #scatterplots of variable pairs
+
+KMO(carpc)  
+cortest.bartlett(carpc)  
+```
+Since KMO is above 0.5, it implied that the variables are suitable for factorability
+Since the p value for Barlett is significant, we can reject null hypothesis that the correlation matrix is not an identity matrix. This implies that the variables are not uncorrelated.
+
+PCA without rotation
+```{r}
+p1 = principal(carpc, nfactor = 9, rotate="NULL") #using all 9 variables
+scree(carpc, factors=F)
+p1
+```
+From the screeplot and the factor matrix, we see that with a factor of 2, the cumulative proportion explained by these 2 factors is 81% and the eigenvalues are more than 1.
+
+Two components retained
+```{r}
+p2 = principal(carpc, nfactor=2, rotate="NULL")
+
+#Varimax rotation
+p2r = principal(carpc, nfactor=2)  #default varimax rotation
+print(p2r$loadings, digits=3, cutoff=0.4, sort=T)
+biplot(p2r)
+
+#Oblimin rotation
+p2ro = principal(carpc, nfactor=2, rotate="oblimin")
+print(p2ro$loadings, digits=3, cutoff=0.4, sort=T)
+biplot(p2ro)
+```
+mpg is cross loaded on both factors for both varimax and oblimin rotations. We shall look at it's correlation with the other variables and decide whether a not to exclude it.
+```{r}
+round(cor(carpc), 2) #it is significant to other variables, however, we will remove it
+
+carpc1 = carpc[,-9]
+p3r = principal(carpc1, nfactor=2)
+print(p3r$loadings, digits=3, cutoff=0.4, sort=T)
+biplot(p3r)
+```
+
+View component scores
+```{r}
+str(p3r)
+head(p3r$scores)
+```
+
+Compute summated scales
+```{r}
+carss = transform(car, SS1 = (wheelbas + width + length +curb_wgt + fuel_cap) / 5, SS2 = (price + engine_s + horsepow) / 3)
+head(carss)
+```
+
+Any differences between vehicle types?
+```{r}
+library(plyr)
+
+ddply(carss[c("type", "SS1", "SS2")], .(type), summarise, mss1 = mean(SS1), mss2=mean(SS2))
+t.test(carss$SS1 ~ carss$type)
+t.test(carss$SS2 ~ carss$type)
+```
+
+Predict sales
+```{r}
+fit = lm(sales~ SS1 + SS2 + factor(type) + mpg, data=carss)
+summary(fit)
+plot(fit)
+```
